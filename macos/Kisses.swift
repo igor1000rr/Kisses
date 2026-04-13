@@ -186,10 +186,7 @@ class SetupView: NSView {
                       _ font:NSFont,_ color:NSColor){
         let attrs:[NSAttributedString.Key:Any]=[.font:font,.foregroundColor:color]
         let str=text as NSString; let sz=str.size(withAttributes:attrs)
-        ctx.saveGState()
-        ctx.translateBy(x:x,y:y); ctx.scaleBy(x:1,y:-1)
-        str.draw(at:CGPoint(x:-sz.width/2,y:-sz.height/2),withAttributes:attrs)
-        ctx.restoreGState()
+        str.draw(at:CGPoint(x:x-sz.width/2,y:y-sz.height/2),withAttributes:attrs)
     }
 
     func choose(_ btn:Int,_ name:String){
@@ -461,9 +458,7 @@ class OverlayView: NSView {
         guard let t=p.txt else{return}
         let a=CGFloat(ai)/255
         let color=NSColor(red:p.r/255,green:p.g/255,blue:p.b/255,alpha:a)
-        g.saveGState(); g.translateBy(x:p.x,y:p.y); g.rotate(by:p.rot)
-        drawText(g,t,0,0,.systemFont(ofSize:p.sz,weight:.bold),color)
-        g.restoreGState()
+        drawText(g,t,p.x,p.y,.systemFont(ofSize:p.sz,weight:.bold),color)
     }
     func dRips(_ g:CGContext){
         let now=CACurrentMediaTime()
@@ -482,9 +477,7 @@ class OverlayView: NSView {
                   _ font:NSFont,_ color:NSColor){
         let attrs:[NSAttributedString.Key:Any]=[.font:font,.foregroundColor:color]
         let str=text as NSString; let sz=str.size(withAttributes:attrs)
-        g.saveGState(); g.translateBy(x:x,y:y); g.scaleBy(x:1,y:-1)
-        str.draw(at:CGPoint(x:-sz.width/2,y:-sz.height/2),withAttributes:attrs)
-        g.restoreGState()
+        str.draw(at:CGPoint(x:x-sz.width/2,y:y-sz.height/2),withAttributes:attrs)
     }
 }
 
