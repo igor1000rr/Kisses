@@ -9,13 +9,12 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Info.plist "$APP/Contents/Info.plist"
 
 echo "Compiling Kisses.swift…"
-swiftc -O -o "$APP/Contents/MacOS/Kisses" \
+swiftc -Onone -g -o "$APP/Contents/MacOS/Kisses" \
     Kisses.swift \
     -framework Cocoa \
     -framework AVFoundation \
     -framework CoreGraphics
 
-# Optional soft-hum.mp3 — bundle if present next to build.sh
 if [ -f "soft-hum.mp3" ]; then
     cp soft-hum.mp3 "$APP/Contents/Resources/"
     echo "✓ bundled soft-hum.mp3"
