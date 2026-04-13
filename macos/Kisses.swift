@@ -37,12 +37,12 @@ final class Lip {
     var pAmt:CGFloat=0, pVel:CGFloat=0
     var rot:CGFloat=0, tRot:CGFloat=0
     var exitP:CGFloat=0, winkP:CGFloat=0
-    var isP=false, isEx=false, isFP=true, isH=false, done=false
-    var hT:CFTimeInterval=0, pSide:CGFloat=1
+    var isP=false, isEx=false, isFP=true, done=false
+    var pSide:CGFloat=1
     var trail:[CGPoint]=[], pts:[Pt]=[], rps:[Rp]=[]
     var aBtn:Int = -1, ltX:CGFloat=0, ltY:CGFloat=0
 
-    static let hold:CFTimeInterval=3.0, sm:CGFloat=0.22
+    static let sm:CGFloat=0.22
 
     static let hR:[CGFloat]=[255,255,255,255,233]
     static let hG:[CGFloat]=[107,133,182,64,30]
@@ -84,8 +84,6 @@ final class Lip {
         pVel+=(tgt-pAmt)*0.18; pVel*=0.7; pAmt+=pVel
         if !isP&&abs(pAmt)<0.003{pAmt=0;pVel=0}
         rot+=(tRot-rot)*0.12; if !isP{tRot*=0.92}
-        if isH&&(!isEx)&&(CACurrentMediaTime()-hT)>=Lip.hold{
-            isEx=true;isH=false;spawn(px,py,25)}
         if isEx{exitP+=0.018
             winkP=exitP<0.3 ? min(1,exitP/0.15):max(0,1-(exitP-0.3)/0.2)
             if exitP>1.3{done=true}}
@@ -176,7 +174,7 @@ class SetupView: NSView {
             drawCentered(ctx,"Activating lips...",w/2,295,
                 .systemFont(ofSize:11,weight:.light),NSColor(red:1,green:0.55,blue:0.66,alpha:0.45))
         }
-        drawCentered(ctx,"Hold button 3 sec to exit",w/2,345,
+        drawCentered(ctx,"Quit via menu bar 💋 icon",w/2,345,
             .systemFont(ofSize:10),NSColor.white.withAlphaComponent(0.4))
         drawCentered(ctx,"thank you for kissing with love",w/2,378,
             .systemFont(ofSize:9,weight:.light),NSColor(red:1,green:0.55,blue:0.66,alpha:0.25))
@@ -246,7 +244,7 @@ class OverlayView: NSView {
             let a=Int(f*0.2*255); let gs=f*0.75*sc
             if gs>0.05{dLip(g,p.trail[i].x+sx,p.trail[i].y+sy,gs,0,0,0,a)}}
         if sc>0.01{dLip(g,dx,dy,sc,p.rot+sr,max(0,p.pAmt),p.winkP,255)}
-        dHold(g,dx,dy); dParts(g); dRips(g)
+        dParts(g); dRips(g)
     }
 
     func dGlow(_ g:CGContext,_ x:CGFloat,_ y:CGFloat){
@@ -269,23 +267,6 @@ class OverlayView: NSView {
         for i in 0..<5{let s=CGFloat(i-2)*8; let l=15+in_*25
             g.move(to:CGPoint(x:30,y:s)); g.addLine(to:CGPoint(x:30+l,y:s)); g.strokePath()}
         g.restoreGState()
-    }
-
-    func dHold(_ g:CGContext,_ x:CGFloat,_ y:CGFloat){
-        let p=Lip.i; guard p.isH else{return}
-        let pr=min(1,CGFloat(CACurrentMediaTime()-p.hT)/CGFloat(Lip.hold)); let r:CGFloat=40
-        g.setStrokeColor(CGColor(red:1,green:1,blue:1,alpha:0.06))
-        g.setLineWidth(3); g.strokeEllipse(in:CGRect(x:x-r,y:y-r,width:r*2,height:r*2))
-        let sw=pr*360; if sw>0{
-            g.setStrokeColor(CGColor(red:1,green:0.45,blue:0.6,alpha:0.3+pr*0.5))
-            g.setLineCap(.round)
-            g.addArc(center:CGPoint(x:x,y:y),radius:r,startAngle:-.pi/2,
-                endAngle:-.pi/2+sw*(.pi/180),clockwise:false)
-            g.strokePath()
-        }
-        if pr>0.8{let ta=(pr-0.8)*5*0.6
-            drawText(g,"bye~",x,y+r+10,.systemFont(ofSize:11,weight:.bold),
-                NSColor(red:1,green:0.45,blue:0.6,alpha:ta))}
     }
 
     func dLip(_ g:CGContext,_ x:CGFloat,_ y:CGFloat,_ sc:CGFloat,_ ro:CGFloat,
@@ -507,7 +488,7 @@ let loveQueue = DispatchQueue(label: "kisses.love")
 func btnDown(_ b:Int,_ x:CGFloat,_ y:CGFloat){
     let p = Lip.i
     guard b == p.aBtn && !p.isEx else { return }
-    p.isP = true; p.isH = true; p.hT = CACurrentMediaTime()
+    p.isP = true
     p.pSide *= -1; p.tRot = p.pSide * 0.14
     p.spawnRipple(x, y)
     p.spawn(x, y, 25 + Int.random(in:0...10))
@@ -526,7 +507,7 @@ func btnDown(_ b:Int,_ x:CGFloat,_ y:CGFloat){
 func btnUp(_ b:Int){
     let p = Lip.i
     guard b == p.aBtn else { return }
-    p.isP = false; p.isH = false
+    p.isP = false
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -607,8 +588,6 @@ class App: NSObject, NSApplicationDelegate {
         panel.isReleasedWhenClosed = false
         panel.isOpaque=false; panel.backgroundColor=NSColor.clear
         panel.hasShadow=false; panel.ignoresMouseEvents=true
-        // CGShieldingWindowLevel — highest possible, above screensaver, login window, etc.
-        // Beats Claude Desktop, fullscreen apps, anything.
         panel.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         let v=OverlayView(frame:NSRect(x:0,y:0,width:sz,height:sz))
@@ -628,7 +607,6 @@ class App: NSObject, NSApplicationDelegate {
             let sh=screen?.frame.maxY ?? NSScreen.main?.frame.height ?? 900
             let wx=p.px-sz/2, wy=sh-p.py-sz/2
             self.overlayWin?.setFrameOrigin(NSPoint(x:wx,y:wy))
-            // Re-assert top z-order every ~1s in case some app pushed us down
             self.raiseTick += 1
             if self.raiseTick >= 60 {
                 self.raiseTick = 0
@@ -679,7 +657,10 @@ class App: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title:"Quit Kisses",action:#selector(quitAction),keyEquivalent:""))
         statusItem?.menu=menu
     }
-    @objc func quitAction(){Lip.i.isEx=true; Lip.i.spawn(Lip.i.px,Lip.i.py,25)}
+    @objc func quitAction(){
+        Lip.i.isEx=true
+        Lip.i.spawn(Lip.i.px,Lip.i.py,25)
+    }
 
     func loadSound(){
         let candidates = ["Pop", "Tink", "Morse", "Bottle"]
