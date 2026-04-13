@@ -622,14 +622,13 @@ class App: NSObject, NSApplicationDelegate {
     }
 
     func startMouseMonitor(){
-        let mask:CGEventMask =
-            (1<<CGEventType.mouseMoved.rawValue) |
-            (1<<CGEventType.leftMouseDown.rawValue) | (1<<CGEventType.leftMouseUp.rawValue) |
-            (1<<CGEventType.rightMouseDown.rawValue) | (1<<CGEventType.rightMouseUp.rawValue) |
-            (1<<CGEventType.otherMouseDown.rawValue) | (1<<CGEventType.otherMouseUp.rawValue) |
-            (1<<CGEventType.leftMouseDragged.rawValue) |
-            (1<<CGEventType.rightMouseDragged.rawValue) |
-            (1<<CGEventType.otherMouseDragged.rawValue)
+        let evTypes: [CGEventType] = [
+            .mouseMoved, .leftMouseDown, .leftMouseUp,
+            .rightMouseDown, .rightMouseUp,
+            .otherMouseDown, .otherMouseUp,
+            .leftMouseDragged, .rightMouseDragged, .otherMouseDragged
+        ]
+        let mask: CGEventMask = evTypes.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
         guard let tap=CGEvent.tapCreate(tap:.cghidEventTap,place:.headInsertEventTap,
             options:.listenOnly,eventsOfInterest:mask,
             callback:mouseCallback,userInfo:nil) else{
