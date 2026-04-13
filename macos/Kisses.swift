@@ -194,7 +194,7 @@ class SetupView: NSView {
         DispatchQueue.main.asyncAfter(deadline:.now()+1.5){[weak self] in
             guard let self = self else { return }
             let cb = self.onButton
-            self.onButton = nil  // break closure's strong refs before we invoke
+            self.onButton = nil
             cb?(btn,name)
         }
     }
@@ -297,10 +297,8 @@ class OverlayView: NSView {
         guard al>0 else{return}; let a=CGFloat(al)/255
         g.saveGState()
         g.translateBy(x:x,y:y); g.rotate(by:ro)
-        // pucker: vertical stretch + horizontal squeeze on press
         g.scaleBy(x:sc*(1-pr*0.22),y:sc*(1+pr*0.12))
 
-        // kiss radiation lines on press
         if pr>0.25&&al>200{
             let ia=(pr-0.25)/0.75*0.55; let sp=CGFloat(CACurrentMediaTime()*3)
             g.setStrokeColor(CGColor(red:1,green:0.42,blue:0.58,alpha:ia*a))
@@ -310,16 +308,14 @@ class OverlayView: NSView {
                 g.addLine(to:CGPoint(x:cos(an)*(44+pr*14),y:sin(an)*(44+pr*14)))
                 g.strokePath()}}
 
-        // shadow
         g.setFillColor(CGColor(red:0,green:0,blue:0,alpha:a*0.1))
         g.fillEllipse(in:CGRect(x:-28,y:10,width:56,height:10))
 
-        // ── Top lip with cupid's bow ──
         let top=CGMutablePath()
         top.move(to:CGPoint(x:-26,y:0))
         top.addQuadCurve(to:CGPoint(x:-14,y:-8),control:CGPoint(x:-22,y:-8))
         top.addQuadCurve(to:CGPoint(x:-5,y:-5),control:CGPoint(x:-9,y:-10))
-        top.addQuadCurve(to:CGPoint(x:0,y:-2),control:CGPoint(x:-2.5,y:-3))  // cupid's bow dip
+        top.addQuadCurve(to:CGPoint(x:0,y:-2),control:CGPoint(x:-2.5,y:-3))
         top.addQuadCurve(to:CGPoint(x:5,y:-5),control:CGPoint(x:2.5,y:-3))
         top.addQuadCurve(to:CGPoint(x:14,y:-8),control:CGPoint(x:9,y:-10))
         top.addQuadCurve(to:CGPoint(x:26,y:0),control:CGPoint(x:22,y:-8))
@@ -330,7 +326,6 @@ class OverlayView: NSView {
         g.setStrokeColor(CGColor(red:olR,green:olG,blue:olB,alpha:a))
         g.setLineWidth(1.9); g.addPath(top); g.strokePath()
 
-        // ── Bottom lip (fuller) ──
         let bot=CGMutablePath()
         bot.move(to:CGPoint(x:-26,y:0))
         bot.addQuadCurve(to:CGPoint(x:0,y:13),control:CGPoint(x:-18,y:15))
@@ -342,7 +337,6 @@ class OverlayView: NSView {
         g.setStrokeColor(CGColor(red:olR,green:olG,blue:olB,alpha:a))
         g.setLineWidth(1.9); g.addPath(bot); g.strokePath()
 
-        // center parting line (where lips meet)
         g.setStrokeColor(CGColor(red:olR*0.7,green:olG*0.6,blue:olB*0.6,alpha:a*0.7))
         g.setLineWidth(1.4); g.setLineCap(.round)
         g.move(to:CGPoint(x:-24,y:0))
@@ -350,7 +344,6 @@ class OverlayView: NSView {
         g.addQuadCurve(to:CGPoint(x:24,y:0),control:CGPoint(x:12,y:2))
         g.strokePath()
 
-        // gloss highlights on top lip
         g.setFillColor(CGColor(red:1,green:1,blue:1,alpha:a*0.48))
         let gl1=CGMutablePath()
         gl1.move(to:CGPoint(x:-16,y:-5))
@@ -359,7 +352,6 @@ class OverlayView: NSView {
         gl1.closeSubpath()
         g.addPath(gl1); g.fillPath()
 
-        // gloss highlight on bottom lip
         g.setFillColor(CGColor(red:1,green:1,blue:1,alpha:a*0.4))
         let gl2=CGMutablePath()
         gl2.move(to:CGPoint(x:-10,y:6))
@@ -369,17 +361,14 @@ class OverlayView: NSView {
         gl2.closeSubpath()
         g.addPath(gl2); g.fillPath()
 
-        // sparkle on gloss (pulsing)
         let spk=CGFloat(sin(CACurrentMediaTime()*2)*0.5+0.5)*0.4
         g.setFillColor(CGColor(red:1,green:1,blue:1,alpha:spk*a))
         g.fillEllipse(in:CGRect(x:-13,y:-6.5,width:2.4,height:2.4))
 
-        // blush cheeks
         g.setFillColor(CGColor(red:1,green:0.42,blue:0.55,alpha:a*0.18))
         g.fillEllipse(in:CGRect(x:-34,y:1,width:10,height:6))
         g.fillEllipse(in:CGRect(x:24,y:1,width:10,height:6))
 
-        // wink hint: subtle heart sparkle above when winkP active
         if wk>0.1{
             g.setFillColor(CGColor(red:1,green:0.62,blue:0.72,alpha:a*wk*0.6))
             let hs:CGFloat=3
@@ -390,7 +379,6 @@ class OverlayView: NSView {
         g.restoreGState()
     }
 
-    // ── Radial gradient helper ──
     func fillGrad(_ g:CGContext,_ path:CGPath,_ center:CGPoint,_ radius:CGFloat,
                   _ c1:(CGFloat,CGFloat,CGFloat,CGFloat),_ c2:(CGFloat,CGFloat,CGFloat,CGFloat)){
         g.saveGState(); g.addPath(path); g.clip()
@@ -402,7 +390,6 @@ class OverlayView: NSView {
         g.restoreGState()
     }
 
-    // ── Particles ──
     func dParts(_ g:CGContext){
         for p in Lip.i.pts{
             let t=CGFloat(p.life)/CGFloat(p.ml)
@@ -477,7 +464,6 @@ class OverlayView: NSView {
             j-=1}
     }
 
-    // ── Text helper ──
     func drawText(_ g:CGContext,_ text:String,_ x:CGFloat,_ y:CGFloat,
                   _ font:NSFont,_ color:NSColor){
         let attrs:[NSAttributedString.Key:Any]=[.font:font,.foregroundColor:color]
@@ -492,26 +478,31 @@ class OverlayView: NSView {
 
 func mouseCallback(proxy:CGEventTapProxy,type:CGEventType,event:CGEvent,
                    refcon:UnsafeMutableRawPointer?)->Unmanaged<CGEvent>?{
-    if type == .tapDisabledByTimeout {
-        if let t=App.shared?.eventTap{CGEvent.tapEnable(tap:t,enable:true)}
-        return Unmanaged.passUnretained(event)
-    }
+    let p = Lip.i
     let loc = event.location
-    let btnNum = Int(event.getIntegerValueField(.mouseEventButtonNumber))
-    let evType = type
-    DispatchQueue.main.async {
-        let p = Lip.i
-        switch evType {
-        case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
-            p.mx = loc.x; p.my = loc.y
-        case .leftMouseDown: btnDown(0, loc.x, loc.y)
-        case .leftMouseUp: btnUp(0)
-        case .rightMouseDown: btnDown(1, loc.x, loc.y)
-        case .rightMouseUp: btnUp(1)
-        case .otherMouseDown: btnDown(btnNum, loc.x, loc.y)
-        case .otherMouseUp: btnUp(btnNum)
-        default: break
-        }
+
+    switch type {
+    case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+        // Direct atomic CGFloat write — no dispatch, no queue flood
+        p.mx = loc.x
+        p.my = loc.y
+    case .leftMouseDown:
+        DispatchQueue.main.async { btnDown(0, loc.x, loc.y) }
+    case .leftMouseUp:
+        DispatchQueue.main.async { btnUp(0) }
+    case .rightMouseDown:
+        DispatchQueue.main.async { btnDown(1, loc.x, loc.y) }
+    case .rightMouseUp:
+        DispatchQueue.main.async { btnUp(1) }
+    case .otherMouseDown:
+        let b = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+        DispatchQueue.main.async { btnDown(b, loc.x, loc.y) }
+    case .otherMouseUp:
+        let b = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+        DispatchQueue.main.async { btnUp(b) }
+    case .tapDisabledByTimeout:
+        if let t = App.shared?.eventTap { CGEvent.tapEnable(tap: t, enable: true) }
+    default: break
     }
     return Unmanaged.passUnretained(event)
 }
@@ -525,7 +516,11 @@ func btnDown(_ b:Int,_ x:CGFloat,_ y:CGFloat){
     p.spawnRipple(x,y)
     p.spawn(x,y,p.isFP ? 20:5+Int.random(in:0...4))
     p.isFP=false; App.shared?.playPurr()
-    loveQueue.async{tryInsertLove()}
+    // Read frontmost on MAIN thread — NSWorkspace is not safe from bg queue
+    let appName = NSWorkspace.shared.frontmostApplication?.localizedName?.lowercased() ?? ""
+    if appName.contains("cursor") || appName.contains("claude") {
+        loveQueue.async { tryInsertLove() }
+    }
 }
 func btnUp(_ b:Int){
     let p=Lip.i; guard b==p.aBtn else{return}
@@ -533,12 +528,10 @@ func btnUp(_ b:Int){
 }
 
 // ════════════════════════════════════════════════════════════════
-//  Love injector
+//  Love injector (called ONLY when target app is frontmost)
 // ════════════════════════════════════════════════════════════════
 
 func tryInsertLove(){
-    let app=NSWorkspace.shared.frontmostApplication?.localizedName?.lowercased() ?? ""
-    guard app.contains("cursor")||app.contains("claude") else{return}
     let kiss=Lip.kisses.randomElement()!
     let love=Lip.loves.randomElement()!
     let msg=kiss+love+" ❤"
@@ -579,7 +572,7 @@ class App: NSObject, NSApplicationDelegate {
     func showSetup(){
         let w=NSWindow(contentRect:NSRect(x:0,y:0,width:360,height:400),
             styleMask:[.borderless],backing:.buffered,defer:false)
-        w.isReleasedWhenClosed = false  // CRITICAL: prevent double-free via close+ARC
+        w.isReleasedWhenClosed = false
         w.center(); w.isOpaque=false
         w.backgroundColor=NSColor.clear
         w.level = .floating; w.isMovableByWindowBackground=true
@@ -594,10 +587,8 @@ class App: NSObject, NSApplicationDelegate {
     }
 
     func startLip(_ btn:Int){
-        NSLog("[Kisses] startLip btn=\(btn)")
         Lip.i.aBtn=btn
 
-        // init lip pos to current mouse so first tick isn't at -200
         let mouse = NSEvent.mouseLocation
         if let s = NSScreen.main {
             Lip.i.mx = mouse.x
@@ -637,7 +628,6 @@ class App: NSObject, NSApplicationDelegate {
             if p.done{self.quit()}
         }
         RunLoop.current.add(timer!,forMode:.common)
-        NSLog("[Kisses] startLip done")
     }
 
     func startMouseMonitor(){
