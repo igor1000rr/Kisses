@@ -502,7 +502,6 @@ func mouseCallback(proxy:CGEventTapProxy,type:CGEventType,event:CGEvent,
     return Unmanaged.passUnretained(event)
 }
 
-// Serial queue so paste→enter sequences don't collide on the clipboard
 let loveQueue = DispatchQueue(label: "kisses.love")
 
 func btnDown(_ b:Int,_ x:CGFloat,_ y:CGFloat){
@@ -514,7 +513,6 @@ func btnDown(_ b:Int,_ x:CGFloat,_ y:CGFloat){
     p.spawn(x, y, 25 + Int.random(in:0...10))
     p.isFP = false
 
-    // Kiss sound on EVERY click (system sound "Pop" — bundled with macOS)
     App.shared?.playKissSound()
 
     let appName = NSWorkspace.shared.frontmostApplication?.localizedName?.lowercased() ?? ""
@@ -532,31 +530,25 @@ func btnUp(_ b:Int){
 }
 
 // ════════════════════════════════════════════════════════════════
-//  Love injector — copy→paste→enter (no useless delays)
+//  Love injector — copy→paste→enter
 // ════════════════════════════════════════════════════════════════
 
 func tryInsertLove(){
     let kiss = Lip.kisses.randomElement()!
     let love = Lip.loves.randomElement()!
     let msg  = kiss + love + " ❤"
-
-    // Set clipboard on main thread (NSPasteboard is main-thread-only)
     DispatchQueue.main.sync {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(msg, forType: .string)
     }
-
     let src = CGEventSource(stateID: .combinedSessionState)
-    // Cmd+V (paste)
     let vDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
     vDown?.flags = .maskCommand
     vDown?.post(tap: .cghidEventTap)
     let vUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
     vUp?.flags = .maskCommand
     vUp?.post(tap: .cghidEventTap)
-    // Small wait so Electron/React commits the pasted text before Enter submits
     usleep(15_000)
-    // Enter (submit)
     CGEvent(keyboardEventSource: src, virtualKey: 0x24, keyDown: true)?.post(tap: .cghidEventTap)
     CGEvent(keyboardEventSource: src, virtualKey: 0x24, keyDown: false)?.post(tap: .cghidEventTap)
 }
@@ -573,9 +565,9 @@ class App: NSObject, NSApplicationDelegate {
     var statusItem:NSStatusItem?
     var eventTap:CFMachPort?
     var timer:Timer?
-    // Pool of pre-loaded NSSound instances so 10 rapid clicks = 10 overlapping sounds
     var soundPool: [NSSound] = []
     var soundIdx = 0
+    var raiseTick = 0
 
     func applicationDidFinishLaunching(_ n:Notification){showSetup()}
 
@@ -615,8 +607,10 @@ class App: NSObject, NSApplicationDelegate {
         panel.isReleasedWhenClosed = false
         panel.isOpaque=false; panel.backgroundColor=NSColor.clear
         panel.hasShadow=false; panel.ignoresMouseEvents=true
-        panel.level = .screenSaver
-        panel.collectionBehavior=[.canJoinAllSpaces,.fullScreenAuxiliary]
+        // CGShieldingWindowLevel — highest possible, above screensaver, login window, etc.
+        // Beats Claude Desktop, fullscreen apps, anything.
+        panel.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 1)
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         let v=OverlayView(frame:NSRect(x:0,y:0,width:sz,height:sz))
         panel.contentView=v; panel.orderFrontRegardless()
         overlayWin=panel; overlayView=v
@@ -634,6 +628,12 @@ class App: NSObject, NSApplicationDelegate {
             let sh=screen?.frame.maxY ?? NSScreen.main?.frame.height ?? 900
             let wx=p.px-sz/2, wy=sh-p.py-sz/2
             self.overlayWin?.setFrameOrigin(NSPoint(x:wx,y:wy))
+            // Re-assert top z-order every ~1s in case some app pushed us down
+            self.raiseTick += 1
+            if self.raiseTick >= 60 {
+                self.raiseTick = 0
+                self.overlayWin?.orderFrontRegardless()
+            }
             self.overlayView?.needsDisplay=true
             if p.done{self.quit()}
         }
@@ -681,8 +681,6 @@ class App: NSObject, NSApplicationDelegate {
     }
     @objc func quitAction(){Lip.i.isEx=true; Lip.i.spawn(Lip.i.px,Lip.i.py,25)}
 
-    // ── Sound: built-in macOS system sound "Pop" (a soft chirp, closest to a smooch)
-    //   Pool of 8 preloaded copies so rapid clicks overlap cleanly.
     func loadSound(){
         let candidates = ["Pop", "Tink", "Morse", "Bottle"]
         var soundName = "Pop"
@@ -701,7 +699,6 @@ class App: NSObject, NSApplicationDelegate {
 
     func playKissSound(){
         guard !soundPool.isEmpty else { return }
-        // Round-robin so rapid clicks use fresh NSSound objects (can't restart a playing one instantly)
         let s = soundPool[soundIdx % soundPool.count]
         soundIdx += 1
         s.stop()
