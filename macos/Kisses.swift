@@ -41,6 +41,7 @@ final class Lip {
     var pSide:CGFloat=1
     var trail:[CGPoint]=[], pts:[Pt]=[], rps:[Rp]=[]
     var aBtn:Int = -1, ltX:CGFloat=0, ltY:CGFloat=0
+    var pressTime:CFTimeInterval=0  // watchdog: when isP became true
 
     static let sm:CGFloat=0.22
 
@@ -80,6 +81,10 @@ final class Lip {
         prevX=px; prevY=py
         px+=(mx-px)*Lip.sm; py+=(my-py)*Lip.sm
         trail.append(CGPoint(x:px,y:py)); while trail.count>7{trail.removeFirst()}
+        // Watchdog: if pressed for >300ms without explicit release, force release
+        if isP && (CACurrentMediaTime() - pressTime) > 0.3 {
+            isP = false
+        }
         let tgt:CGFloat=isP ? 1:0
         pVel+=(tgt-pAmt)*0.18; pVel*=0.7; pAmt+=pVel
         if !isP&&abs(pAmt)<0.003{pAmt=0;pVel=0}
@@ -476,8 +481,11 @@ func mouseCallback(proxy:CGEventTapProxy,type:CGEventType,event:CGEvent,
     case .otherMouseUp:
         let b = Int(event.getIntegerValueField(.mouseEventButtonNumber))
         DispatchQueue.main.async { btnUp(b) }
-    case .tapDisabledByTimeout:
-        if let t = App.shared?.eventTap { CGEvent.tapEnable(tap: t, enable: true) }
+    case .tapDisabledByTimeout, .tapDisabledByUserInput:
+        if let t = App.shared?.eventTap {
+            CGEvent.tapEnable(tap: t, enable: true)
+            NSLog("[Kisses] tap re-enabled after disable")
+        }
     default: break
     }
     return Unmanaged.passUnretained(event)
@@ -489,6 +497,7 @@ func btnDown(_ b:Int,_ x:CGFloat,_ y:CGFloat){
     let p = Lip.i
     guard b == p.aBtn && !p.isEx else { return }
     p.isP = true
+    p.pressTime = CACurrentMediaTime()
     p.pSide *= -1; p.tRot = p.pSide * 0.14
     p.spawnRipple(x, y)
     p.spawn(x, y, 25 + Int.random(in:0...10))
@@ -512,6 +521,7 @@ func btnUp(_ b:Int){
 
 // ════════════════════════════════════════════════════════════════
 //  Love injector — copy→paste→enter
+//  Posts via .cgSessionEventTap so events DON'T loop back through our HID tap
 // ════════════════════════════════════════════════════════════════
 
 func tryInsertLove(){
@@ -523,15 +533,16 @@ func tryInsertLove(){
         NSPasteboard.general.setString(msg, forType: .string)
     }
     let src = CGEventSource(stateID: .combinedSessionState)
+    let postTap: CGEventTapLocation = .cgSessionEventTap
     let vDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
     vDown?.flags = .maskCommand
-    vDown?.post(tap: .cghidEventTap)
+    vDown?.post(tap: postTap)
     let vUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
     vUp?.flags = .maskCommand
-    vUp?.post(tap: .cghidEventTap)
+    vUp?.post(tap: postTap)
     usleep(15_000)
-    CGEvent(keyboardEventSource: src, virtualKey: 0x24, keyDown: true)?.post(tap: .cghidEventTap)
-    CGEvent(keyboardEventSource: src, virtualKey: 0x24, keyDown: false)?.post(tap: .cghidEventTap)
+    CGEvent(keyboardEventSource: src, virtualKey: 0x24, keyDown: true)?.post(tap: postTap)
+    CGEvent(keyboardEventSource: src, virtualKey: 0x24, keyDown: false)?.post(tap: postTap)
 }
 
 // ════════════════════════════════════════════════════════════════
