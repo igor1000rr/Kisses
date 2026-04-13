@@ -119,14 +119,14 @@ final class Lip {
             else{p=Pt(1,x,y,.random(in:-2...2),-.random(in:1...4),
                 Int.random(in:30...55),.random(in:3...9),Lip.sR[ci],Lip.sG[ci],Lip.sB[ci])}
             pts.append(p)}
-        while pts.count>120{pts.removeFirst()}
+        while pts.count>160{pts.removeFirst()}
     }
     func spawnTS(_ x:CGFloat,_ y:CGFloat){
         let ci=Int.random(in:0...4)
         pts.append(Pt(1,x + .random(in:-7...7),y + .random(in:-7...7),
             .random(in:-0.25...0.25),.random(in:-0.55...(-0.05)),
             Int.random(in:12...22),.random(in:1.5...4.5),Lip.sR[ci],Lip.sG[ci],Lip.sB[ci]))
-        while pts.count>120{pts.removeFirst()}
+        while pts.count>160{pts.removeFirst()}
     }
     func spawnRipple(_ x:CGFloat,_ y:CGFloat){
         rps.append(Rp(x,y)); while rps.count>6{rps.removeFirst()}
@@ -249,7 +249,6 @@ class OverlayView: NSView {
         dHold(g,dx,dy); dParts(g); dRips(g)
     }
 
-    // ── Glow ──
     func dGlow(_ g:CGContext,_ x:CGFloat,_ y:CGFloat){
         let pr=sin(CACurrentMediaTime()*2.5)*0.5+0.5, r=55+pr*14
         let path=CGMutablePath(); path.addEllipse(in:CGRect(x:x-r,y:y-r,width:r*2,height:r*2))
@@ -262,7 +261,6 @@ class OverlayView: NSView {
         g.restoreGState()
     }
 
-    // ── Speed lines ──
     func dSpeed(_ g:CGContext,_ x:CGFloat,_ y:CGFloat,_ vx:CGFloat,_ vy:CGFloat,_ sp:CGFloat){
         let a=atan2(vy,vx); var in_=(sp-12)/30; if in_>1{in_=1}
         g.saveGState(); g.translateBy(x:x,y:y); g.rotate(by:a + .pi)
@@ -273,7 +271,6 @@ class OverlayView: NSView {
         g.restoreGState()
     }
 
-    // ── Hold indicator ──
     func dHold(_ g:CGContext,_ x:CGFloat,_ y:CGFloat){
         let p=Lip.i; guard p.isH else{return}
         let pr=min(1,CGFloat(CACurrentMediaTime()-p.hT)/CGFloat(Lip.hold)); let r:CGFloat=40
@@ -291,7 +288,6 @@ class OverlayView: NSView {
                 NSColor(red:1,green:0.45,blue:0.6,alpha:ta))}
     }
 
-    // ── Lips ──
     func dLip(_ g:CGContext,_ x:CGFloat,_ y:CGFloat,_ sc:CGFloat,_ ro:CGFloat,
               _ pr:CGFloat,_ wk:CGFloat,_ al:Int){
         guard al>0 else{return}; let a=CGFloat(al)/255
@@ -473,7 +469,7 @@ class OverlayView: NSView {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  Mouse Callback (C-convention for CGEventTap)
+//  Mouse Callback
 // ════════════════════════════════════════════════════════════════
 
 func mouseCallback(proxy:CGEventTapProxy,type:CGEventType,event:CGEvent,
@@ -483,7 +479,6 @@ func mouseCallback(proxy:CGEventTapProxy,type:CGEventType,event:CGEvent,
 
     switch type {
     case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
-        // Direct atomic CGFloat write — no dispatch, no queue flood
         p.mx = loc.x
         p.my = loc.y
     case .leftMouseDown:
@@ -514,11 +509,16 @@ func btnDown(_ b:Int,_ x:CGFloat,_ y:CGFloat){
     p.isP=true; p.isH=true; p.hT=CACurrentMediaTime()
     p.pSide *= -1; p.tRot=p.pSide*0.14
     p.spawnRipple(x,y)
-    p.spawn(x,y,p.isFP ? 20:5+Int.random(in:0...4))
+    // Big kiss burst on every click (was 5-9, now 25-35)
+    p.spawn(x,y, 25+Int.random(in:0...10))
     p.isFP=false; App.shared?.playPurr()
-    // Read frontmost on MAIN thread — NSWorkspace is not safe from bg queue
+    // Frontmost check on MAIN thread
     let appName = NSWorkspace.shared.frontmostApplication?.localizedName?.lowercased() ?? ""
-    if appName.contains("cursor") || appName.contains("claude") {
+    let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier?.lowercased() ?? ""
+    NSLog("[Kisses] click — frontmost: '\(appName)' (\(bundleID))")
+    if appName.contains("cursor") || appName.contains("claude")
+        || bundleID.contains("cursor") || bundleID.contains("claude")
+        || bundleID.contains("anthropic") {
         loveQueue.async { tryInsertLove() }
     }
 }
@@ -528,24 +528,29 @@ func btnUp(_ b:Int){
 }
 
 // ════════════════════════════════════════════════════════════════
-//  Love injector (called ONLY when target app is frontmost)
+//  Love injector — copy→paste→enter
 // ════════════════════════════════════════════════════════════════
 
 func tryInsertLove(){
     let kiss=Lip.kisses.randomElement()!
     let love=Lip.loves.randomElement()!
     let msg=kiss+love+" ❤"
+    NSLog("[Kisses] typing: \(msg)")
     DispatchQueue.main.sync{
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(msg,forType:.string)
     }
-    usleep(30_000)
+    usleep(5_000)  // tiny wait for clipboard
     let src=CGEventSource(stateID:.combinedSessionState)
+    // Cmd+V
     let vDown=CGEvent(keyboardEventSource:src,virtualKey:0x09,keyDown:true)
-    vDown?.flags = .maskCommand; vDown?.post(tap:.cghidEventTap)
+    vDown?.flags = .maskCommand
+    vDown?.post(tap:.cghidEventTap)
     let vUp=CGEvent(keyboardEventSource:src,virtualKey:0x09,keyDown:false)
+    vUp?.flags = .maskCommand
     vUp?.post(tap:.cghidEventTap)
-    usleep(50_000)
+    usleep(20_000)  // wait for paste to settle
+    // Enter
     let retDown=CGEvent(keyboardEventSource:src,virtualKey:0x24,keyDown:true)
     retDown?.post(tap:.cghidEventTap)
     let retUp=CGEvent(keyboardEventSource:src,virtualKey:0x24,keyDown:false)
@@ -678,9 +683,10 @@ class App: NSObject, NSApplicationDelegate {
             let alt=dir.appendingPathComponent("soft-hum.mp3")
             if FileManager.default.fileExists(atPath:alt.path){url=alt}
         }
-        guard let u=url else{return}
+        guard let u=url else{ NSLog("[Kisses] soft-hum.mp3 not found — no sound"); return }
         player=try? AVAudioPlayer(contentsOf:u)
         player?.numberOfLoops = -1; player?.prepareToPlay()
+        NSLog("[Kisses] loaded sound: \(u.path)")
     }
     func playPurr(){guard !isPurring else{return}; player?.play(); isPurring=true}
     func stopPurr(){guard isPurring else{return}; player?.pause(); isPurring=false}
