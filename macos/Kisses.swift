@@ -582,36 +582,55 @@ class App: NSObject, NSApplicationDelegate {
     }
 
     func startLip(_ btn:Int){
+        NSLog("[Kisses] startLip btn=\(btn)")
         Lip.i.aBtn=btn; setupWin=nil
+
+        // init lip pos to current mouse so first tick isn't at -200
+        let mouse = NSEvent.mouseLocation
+        if let s = NSScreen.main {
+            Lip.i.mx = mouse.x
+            Lip.i.my = s.frame.maxY - mouse.y
+            Lip.i.px = Lip.i.mx
+            Lip.i.py = Lip.i.my
+        }
+
+        NSLog("[Kisses] hide cursors")
         for id in activeDisplayIDs(){CGDisplayHideCursor(id)}
 
+        NSLog("[Kisses] create panel")
         let sz=OverlayView.SZ
         let panel=NSPanel(contentRect:NSRect(x:0,y:0,width:sz,height:sz),
             styleMask:[.borderless,.nonactivatingPanel],backing:.buffered,defer:false)
         panel.isOpaque=false; panel.backgroundColor=NSColor.clear
         panel.hasShadow=false; panel.ignoresMouseEvents=true
-        panel.level=NSWindow.Level(rawValue:Int(CGWindowLevelForKey(.maximumWindow)))
+        panel.level = .screenSaver
         panel.collectionBehavior=[.canJoinAllSpaces,.fullScreenAuxiliary]
         let v=OverlayView(frame:NSRect(x:0,y:0,width:sz,height:sz))
         panel.contentView=v; panel.orderFrontRegardless()
         overlayWin=panel; overlayView=v
 
+        NSLog("[Kisses] start mouse monitor")
         startMouseMonitor()
+        NSLog("[Kisses] setup menu bar")
         setupMenuBar()
+        NSLog("[Kisses] load sound")
         loadSound()
 
+        NSLog("[Kisses] start timer")
         timer=Timer.scheduledTimer(withTimeInterval:1.0/60.0,repeats:true){[weak self] _ in
+            guard let self = self else { return }
             Lip.i.tick()
             let p=Lip.i
             let pt=NSPoint(x:p.px,y:p.py)
             let screen=NSScreen.screens.first(where:{NSMouseInRect(NSPoint(x:pt.x,y:$0.frame.maxY-pt.y),$0.frame,false)}) ?? NSScreen.main
             let sh=screen?.frame.maxY ?? NSScreen.main?.frame.height ?? 900
             let wx=p.px-sz/2, wy=sh-p.py-sz/2
-            self?.overlayWin?.setFrameOrigin(NSPoint(x:wx,y:wy))
-            self?.overlayView?.needsDisplay=true
-            if p.done{self?.quit()}
+            self.overlayWin?.setFrameOrigin(NSPoint(x:wx,y:wy))
+            self.overlayView?.needsDisplay=true
+            if p.done{self.quit()}
         }
         RunLoop.current.add(timer!,forMode:.common)
+        NSLog("[Kisses] startLip done")
     }
 
     func startMouseMonitor(){
