@@ -85,7 +85,7 @@ final class Lip {
         if !isP&&abs(pAmt)<0.003{pAmt=0;pVel=0}
         rot+=(tRot-rot)*0.12; if !isP{tRot*=0.92}
         if isH&&(!isEx)&&(CACurrentMediaTime()-hT)>=Lip.hold{
-            isEx=true;isH=false;App.shared?.stopPurr();spawn(px,py,25)}
+            isEx=true;isH=false;spawn(px,py,25)}
         if isEx{exitP+=0.018
             winkP=exitP<0.3 ? min(1,exitP/0.15):max(0,1-(exitP-0.3)/0.2)
             if exitP>1.3{done=true}}
@@ -502,20 +502,23 @@ func mouseCallback(proxy:CGEventTapProxy,type:CGEventType,event:CGEvent,
     return Unmanaged.passUnretained(event)
 }
 
-let loveQueue=DispatchQueue(label:"kisses.love")
+// Serial queue so paste→enter sequences don't collide on the clipboard
+let loveQueue = DispatchQueue(label: "kisses.love")
 
 func btnDown(_ b:Int,_ x:CGFloat,_ y:CGFloat){
-    let p=Lip.i; guard b==p.aBtn&&(!p.isEx) else{return}
-    p.isP=true; p.isH=true; p.hT=CACurrentMediaTime()
-    p.pSide *= -1; p.tRot=p.pSide*0.14
-    p.spawnRipple(x,y)
-    // Big kiss burst on every click (was 5-9, now 25-35)
-    p.spawn(x,y, 25+Int.random(in:0...10))
-    p.isFP=false; App.shared?.playPurr()
-    // Frontmost check on MAIN thread
+    let p = Lip.i
+    guard b == p.aBtn && !p.isEx else { return }
+    p.isP = true; p.isH = true; p.hT = CACurrentMediaTime()
+    p.pSide *= -1; p.tRot = p.pSide * 0.14
+    p.spawnRipple(x, y)
+    p.spawn(x, y, 25 + Int.random(in:0...10))
+    p.isFP = false
+
+    // Kiss sound on EVERY click (system sound "Pop" — bundled with macOS)
+    App.shared?.playKissSound()
+
     let appName = NSWorkspace.shared.frontmostApplication?.localizedName?.lowercased() ?? ""
     let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier?.lowercased() ?? ""
-    NSLog("[Kisses] click — frontmost: '\(appName)' (\(bundleID))")
     if appName.contains("cursor") || appName.contains("claude")
         || bundleID.contains("cursor") || bundleID.contains("claude")
         || bundleID.contains("anthropic") {
@@ -523,38 +526,39 @@ func btnDown(_ b:Int,_ x:CGFloat,_ y:CGFloat){
     }
 }
 func btnUp(_ b:Int){
-    let p=Lip.i; guard b==p.aBtn else{return}
-    p.isP=false; p.isH=false; App.shared?.stopPurr()
+    let p = Lip.i
+    guard b == p.aBtn else { return }
+    p.isP = false; p.isH = false
 }
 
 // ════════════════════════════════════════════════════════════════
-//  Love injector — copy→paste→enter
+//  Love injector — copy→paste→enter (no useless delays)
 // ════════════════════════════════════════════════════════════════
 
 func tryInsertLove(){
-    let kiss=Lip.kisses.randomElement()!
-    let love=Lip.loves.randomElement()!
-    let msg=kiss+love+" ❤"
-    NSLog("[Kisses] typing: \(msg)")
-    DispatchQueue.main.sync{
+    let kiss = Lip.kisses.randomElement()!
+    let love = Lip.loves.randomElement()!
+    let msg  = kiss + love + " ❤"
+
+    // Set clipboard on main thread (NSPasteboard is main-thread-only)
+    DispatchQueue.main.sync {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(msg,forType:.string)
+        NSPasteboard.general.setString(msg, forType: .string)
     }
-    usleep(5_000)  // tiny wait for clipboard
-    let src=CGEventSource(stateID:.combinedSessionState)
-    // Cmd+V
-    let vDown=CGEvent(keyboardEventSource:src,virtualKey:0x09,keyDown:true)
+
+    let src = CGEventSource(stateID: .combinedSessionState)
+    // Cmd+V (paste)
+    let vDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
     vDown?.flags = .maskCommand
-    vDown?.post(tap:.cghidEventTap)
-    let vUp=CGEvent(keyboardEventSource:src,virtualKey:0x09,keyDown:false)
+    vDown?.post(tap: .cghidEventTap)
+    let vUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
     vUp?.flags = .maskCommand
-    vUp?.post(tap:.cghidEventTap)
-    usleep(20_000)  // wait for paste to settle
-    // Enter
-    let retDown=CGEvent(keyboardEventSource:src,virtualKey:0x24,keyDown:true)
-    retDown?.post(tap:.cghidEventTap)
-    let retUp=CGEvent(keyboardEventSource:src,virtualKey:0x24,keyDown:false)
-    retUp?.post(tap:.cghidEventTap)
+    vUp?.post(tap: .cghidEventTap)
+    // Small wait so Electron/React commits the pasted text before Enter submits
+    usleep(15_000)
+    // Enter (submit)
+    CGEvent(keyboardEventSource: src, virtualKey: 0x24, keyDown: true)?.post(tap: .cghidEventTap)
+    CGEvent(keyboardEventSource: src, virtualKey: 0x24, keyDown: false)?.post(tap: .cghidEventTap)
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -568,9 +572,10 @@ class App: NSObject, NSApplicationDelegate {
     var overlayView:OverlayView?
     var statusItem:NSStatusItem?
     var eventTap:CFMachPort?
-    var player:AVAudioPlayer?
     var timer:Timer?
-    var isPurring=false
+    // Pool of pre-loaded NSSound instances so 10 rapid clicks = 10 overlapping sounds
+    var soundPool: [NSSound] = []
+    var soundIdx = 0
 
     func applicationDidFinishLaunching(_ n:Notification){showSetup()}
 
@@ -676,25 +681,36 @@ class App: NSObject, NSApplicationDelegate {
     }
     @objc func quitAction(){Lip.i.isEx=true; Lip.i.spawn(Lip.i.px,Lip.i.py,25)}
 
+    // ── Sound: built-in macOS system sound "Pop" (a soft chirp, closest to a smooch)
+    //   Pool of 8 preloaded copies so rapid clicks overlap cleanly.
     func loadSound(){
-        var url=Bundle.main.url(forResource:"soft-hum",withExtension:"mp3")
-        if url==nil{
-            let dir=Bundle.main.bundleURL.deletingLastPathComponent()
-            let alt=dir.appendingPathComponent("soft-hum.mp3")
-            if FileManager.default.fileExists(atPath:alt.path){url=alt}
+        let candidates = ["Pop", "Tink", "Morse", "Bottle"]
+        var soundName = "Pop"
+        for n in candidates where NSSound(named: NSSound.Name(n)) != nil {
+            soundName = n; break
         }
-        guard let u=url else{ NSLog("[Kisses] soft-hum.mp3 not found — no sound"); return }
-        player=try? AVAudioPlayer(contentsOf:u)
-        player?.numberOfLoops = -1; player?.prepareToPlay()
-        NSLog("[Kisses] loaded sound: \(u.path)")
+        soundPool.removeAll()
+        for _ in 0..<8 {
+            if let s = NSSound(named: NSSound.Name(soundName)) {
+                s.volume = 0.6
+                soundPool.append(s)
+            }
+        }
+        NSLog("[Kisses] loaded \(soundPool.count) instances of system sound '\(soundName)'")
     }
-    func playPurr(){guard !isPurring else{return}; player?.play(); isPurring=true}
-    func stopPurr(){guard isPurring else{return}; player?.pause(); isPurring=false}
+
+    func playKissSound(){
+        guard !soundPool.isEmpty else { return }
+        // Round-robin so rapid clicks use fresh NSSound objects (can't restart a playing one instantly)
+        let s = soundPool[soundIdx % soundPool.count]
+        soundIdx += 1
+        s.stop()
+        s.play()
+    }
 
     func quit(){
         timer?.invalidate()
         for id in activeDisplayIDs(){CGDisplayShowCursor(id)}
-        stopPurr()
         overlayWin?.close()
         statusItem=nil
         NSApp.terminate(nil)
