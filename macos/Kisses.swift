@@ -31,8 +31,6 @@ final class Rp {
 
 final class Lip {
     static let i = Lip()
-    static var tickTraced = false
-    static var drawTraced = false
     var mx:CGFloat = -200, my:CGFloat = -200
     var px:CGFloat = -200, py:CGFloat = -200
     var prevX:CGFloat=0, prevY:CGFloat=0
@@ -79,7 +77,6 @@ final class Lip {
 
     // ── Tick ──
     func tick(){
-        if !Lip.tickTraced { NSLog("[Kisses] first tick"); Lip.tickTraced = true }
         prevX=px; prevY=py
         px+=(mx-px)*Lip.sm; py+=(my-py)*Lip.sm
         trail.append(CGPoint(x:px,y:py)); while trail.count>7{trail.removeFirst()}
@@ -194,7 +191,12 @@ class SetupView: NSView {
 
     func choose(_ btn:Int,_ name:String){
         guard !chosen else{return}; chosen=true; chosenName=name; needsDisplay=true
-        DispatchQueue.main.asyncAfter(deadline:.now()+1.5){self.onButton?(btn,name)}
+        DispatchQueue.main.asyncAfter(deadline:.now()+1.5){[weak self] in
+            guard let self = self else { return }
+            let cb = self.onButton
+            self.onButton = nil  // break closure's strong refs before we invoke
+            cb?(btn,name)
+        }
     }
 
     override func mouseDown(with e:NSEvent){
@@ -220,7 +222,6 @@ class OverlayView: NSView {
     let olR:CGFloat=90.0/255.0, olG:CGFloat=20.0/255.0, olB:CGFloat=30.0/255.0
 
     override func draw(_ dirtyRect:NSRect){
-        if !Lip.drawTraced { NSLog("[Kisses] first overlay draw"); Lip.drawTraced = true }
         guard let ctx=NSGraphicsContext.current?.cgContext else{return}
         let lip=Lip.i
         ctx.clear(bounds)
@@ -578,12 +579,14 @@ class App: NSObject, NSApplicationDelegate {
     func showSetup(){
         let w=NSWindow(contentRect:NSRect(x:0,y:0,width:360,height:400),
             styleMask:[.borderless],backing:.buffered,defer:false)
+        w.isReleasedWhenClosed = false  // CRITICAL: prevent double-free via close+ARC
         w.center(); w.isOpaque=false
         w.backgroundColor=NSColor.clear
         w.level = .floating; w.isMovableByWindowBackground=true
         let v=SetupView(frame:NSRect(x:0,y:0,width:360,height:400))
         v.onButton={[weak self] btn,_ in
-            w.close(); self?.startLip(btn)
+            self?.setupWin?.orderOut(nil)
+            self?.startLip(btn)
         }
         w.contentView=v; w.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -592,7 +595,7 @@ class App: NSObject, NSApplicationDelegate {
 
     func startLip(_ btn:Int){
         NSLog("[Kisses] startLip btn=\(btn)")
-        Lip.i.aBtn=btn; setupWin=nil
+        Lip.i.aBtn=btn
 
         // init lip pos to current mouse so first tick isn't at -200
         let mouse = NSEvent.mouseLocation
@@ -603,13 +606,12 @@ class App: NSObject, NSApplicationDelegate {
             Lip.i.py = Lip.i.my
         }
 
-        NSLog("[Kisses] hide cursors")
         for id in activeDisplayIDs(){CGDisplayHideCursor(id)}
 
-        NSLog("[Kisses] create panel")
         let sz=OverlayView.SZ
         let panel=NSPanel(contentRect:NSRect(x:0,y:0,width:sz,height:sz),
             styleMask:[.borderless,.nonactivatingPanel],backing:.buffered,defer:false)
+        panel.isReleasedWhenClosed = false
         panel.isOpaque=false; panel.backgroundColor=NSColor.clear
         panel.hasShadow=false; panel.ignoresMouseEvents=true
         panel.level = .screenSaver
@@ -618,14 +620,10 @@ class App: NSObject, NSApplicationDelegate {
         panel.contentView=v; panel.orderFrontRegardless()
         overlayWin=panel; overlayView=v
 
-        NSLog("[Kisses] start mouse monitor")
         startMouseMonitor()
-        NSLog("[Kisses] setup menu bar")
         setupMenuBar()
-        NSLog("[Kisses] load sound")
         loadSound()
 
-        NSLog("[Kisses] start timer")
         timer=Timer.scheduledTimer(withTimeInterval:1.0/60.0,repeats:true){[weak self] _ in
             guard let self = self else { return }
             Lip.i.tick()
@@ -673,9 +671,7 @@ class App: NSObject, NSApplicationDelegate {
         if let btn=statusItem?.button{
             let img=NSImage(size:NSSize(width:18,height:18),flipped:false){r in
                 NSColor(red:1,green:0.35,blue:0.55,alpha:1).setFill()
-                // top lip
                 NSBezierPath(ovalIn:NSRect(x:2,y:9,width:14,height:6)).fill()
-                // bottom lip (slightly fuller)
                 NSBezierPath(ovalIn:NSRect(x:2,y:3,width:14,height:6)).fill()
                 return true}
             img.isTemplate=false; btn.image=img}
