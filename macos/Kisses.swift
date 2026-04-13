@@ -31,6 +31,8 @@ final class Rp {
 
 final class Lip {
     static let i = Lip()
+    static var tickTraced = false
+    static var drawTraced = false
     var mx:CGFloat = -200, my:CGFloat = -200
     var px:CGFloat = -200, py:CGFloat = -200
     var prevX:CGFloat=0, prevY:CGFloat=0
@@ -77,6 +79,7 @@ final class Lip {
 
     // ── Tick ──
     func tick(){
+        if !Lip.tickTraced { NSLog("[Kisses] first tick"); Lip.tickTraced = true }
         prevX=px; prevY=py
         px+=(mx-px)*Lip.sm; py+=(my-py)*Lip.sm
         trail.append(CGPoint(x:px,y:py)); while trail.count>7{trail.removeFirst()}
@@ -217,6 +220,7 @@ class OverlayView: NSView {
     let olR:CGFloat=90.0/255.0, olG:CGFloat=20.0/255.0, olB:CGFloat=30.0/255.0
 
     override func draw(_ dirtyRect:NSRect){
+        if !Lip.drawTraced { NSLog("[Kisses] first overlay draw"); Lip.drawTraced = true }
         guard let ctx=NSGraphicsContext.current?.cgContext else{return}
         let lip=Lip.i
         ctx.clear(bounds)
@@ -487,21 +491,26 @@ class OverlayView: NSView {
 
 func mouseCallback(proxy:CGEventTapProxy,type:CGEventType,event:CGEvent,
                    refcon:UnsafeMutableRawPointer?)->Unmanaged<CGEvent>?{
-    let p=Lip.i; let loc=event.location
-    switch type{
-    case .mouseMoved,.leftMouseDragged,.rightMouseDragged,.otherMouseDragged:
-        p.mx=loc.x; p.my=loc.y
-    case .leftMouseDown: btnDown(0,loc.x,loc.y)
-    case .leftMouseUp: btnUp(0)
-    case .rightMouseDown: btnDown(1,loc.x,loc.y)
-    case .rightMouseUp: btnUp(1)
-    case .otherMouseDown:
-        btnDown(Int(event.getIntegerValueField(.mouseEventButtonNumber)),loc.x,loc.y)
-    case .otherMouseUp:
-        btnUp(Int(event.getIntegerValueField(.mouseEventButtonNumber)))
-    case .tapDisabledByTimeout:
+    if type == .tapDisabledByTimeout {
         if let t=App.shared?.eventTap{CGEvent.tapEnable(tap:t,enable:true)}
-    default:break
+        return Unmanaged.passUnretained(event)
+    }
+    let loc = event.location
+    let btnNum = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+    let evType = type
+    DispatchQueue.main.async {
+        let p = Lip.i
+        switch evType {
+        case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+            p.mx = loc.x; p.my = loc.y
+        case .leftMouseDown: btnDown(0, loc.x, loc.y)
+        case .leftMouseUp: btnUp(0)
+        case .rightMouseDown: btnDown(1, loc.x, loc.y)
+        case .rightMouseUp: btnUp(1)
+        case .otherMouseDown: btnDown(btnNum, loc.x, loc.y)
+        case .otherMouseUp: btnUp(btnNum)
+        default: break
+        }
     }
     return Unmanaged.passUnretained(event)
 }
